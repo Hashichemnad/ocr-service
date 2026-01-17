@@ -5,6 +5,8 @@ import pytesseract
 import fitz  # PyMuPDF
 from PIL import Image
 
+import re
+
 app = Flask(__name__)
 
 def extract_text_from_pdf(file_stream):
@@ -35,6 +37,56 @@ def extract_text_from_pdf(file_stream):
 
     return text.strip()
 
+def mask_pii(text: str) -> str:
+    if not text:
+        return text
+
+    # 1️⃣ Emails
+    text = re.sub(
+        r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}',
+        '[EMAIL_REMOVED]',
+        text
+    )
+
+    # 2️⃣ Phone numbers (international + local)
+    text = re.sub(
+        r'(\+?\d{1,3}[\s\-]?)?(\(?\d{2,4}\)?[\s\-]?)?\d{3,4}[\s\-]?\d{3,4}',
+        '[PHONE_REMOVED]',
+        text
+    )
+
+    # 3️⃣ LinkedIn URLs
+    text = re.sub(
+        r'linkedin\.com\/[^\s]+',
+        '[LINKEDIN_REMOVED]',
+        text,
+        flags=re.IGNORECASE
+    )
+
+    # 4️⃣ Other URLs
+    text = re.sub(
+        r'(http|https):\/\/[^\s]+',
+        '[URL_REMOVED]',
+        text
+    )
+
+    # 5️⃣ Remove name line (heuristic)
+    lines = text.splitlines()
+    cleaned_lines = []
+
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+
+        # Heuristic: first non-empty line with 2–4 capitalized words
+        if i < 3 and re.match(r'^([A-Z][a-z]+ ){1,3}[A-Z][a-z]+$', stripped):
+            continue  # likely candidate name
+
+        cleaned_lines.append(line)
+
+    text = "\n".join(cleaned_lines)
+
+    return text.strip()
+
 @app.route("/health", methods=["GET"])
 def health():
     return {"status": "ok"}
@@ -47,9 +99,11 @@ def extract():
     file = request.files["file"]
     text = extract_text_from_pdf(file.stream)
 
+    masked_text = mask_pii(text)
+    
     return jsonify({
         "success": True,
-        "text": text
+        "text": masked_text
     })
 
 if __name__ == "__main__":
