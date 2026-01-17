@@ -14,29 +14,51 @@ def mask_pii(text: str) -> str:
     if not text:
         return text
 
-    # Mask email addresses
+    # 1️⃣ Emails
     text = re.sub(
-        r'[\w\.-]+@[\w\.-]+\.\w+',
-        '[EMAIL_REDACTED]',
+        r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}',
+        '[EMAIL_REMOVED]',
         text
     )
 
-    # Mask phone numbers (international + local)
+    # 2️⃣ Phone numbers (international + local)
     text = re.sub(
-        r'(\+?\d[\d\s\-]{7,}\d)',
-        '[PHONE_REDACTED]',
+        r'(\+?\d{1,3}[\s\-]?)?(\(?\d{2,4}\)?[\s\-]?)?\d{3,4}[\s\-]?\d{3,4}',
+        '[PHONE_REMOVED]',
         text
     )
 
-    # Mask LinkedIn URLs
+    # 3️⃣ LinkedIn URLs
     text = re.sub(
-        r'https?://(www\.)?linkedin\.com/\S+',
-        '[LINKEDIN_REDACTED]',
+        r'linkedin\.com\/[^\s]+',
+        '[LINKEDIN_REMOVED]',
         text,
         flags=re.IGNORECASE
     )
 
-    return text
+    # 4️⃣ Other URLs
+    text = re.sub(
+        r'(http|https):\/\/[^\s]+',
+        '[URL_REMOVED]',
+        text
+    )
+
+    # 5️⃣ Remove name line (heuristic)
+    lines = text.splitlines()
+    cleaned_lines = []
+
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+
+        # Heuristic: first non-empty line with 2–4 capitalized words
+        if i < 3 and re.match(r'^([A-Z][a-z]+ ){1,3}[A-Z][a-z]+$', stripped):
+            continue  # likely candidate name
+
+        cleaned_lines.append(line)
+
+    text = "\n".join(cleaned_lines)
+
+    return text.strip()
 
 
 @app.route("/extract", methods=["POST"])
