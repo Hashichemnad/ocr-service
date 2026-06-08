@@ -1,4 +1,5 @@
 from flask import Flask, request, jsonify
+from docx import Document
 import base64
 import io
 import pdfplumber
@@ -59,7 +60,22 @@ def mask_pii(text: str) -> str:
     text = "\n".join(cleaned_lines)
 
     return text.strip()
+    
 
+def extract_docx_text(doc_bytes):
+
+    doc_stream = io.BytesIO(doc_bytes)
+
+    document = Document(doc_stream)
+
+    text = []
+
+    for para in document.paragraphs:
+        if para.text:
+            text.append(para.text)
+
+    return "\n".join(text)
+    
 
 @app.route("/extract", methods=["POST"])
 def extract_text():
@@ -70,13 +86,25 @@ def extract_text():
 
     try:
         # Decode Base64 → PDF bytes
-        pdf_bytes = base64.b64decode(data["fileBase64"])
-        pdf_stream = io.BytesIO(pdf_bytes)
-
-        extracted_text = ""
-        with pdfplumber.open(pdf_stream) as pdf:
-            for page in pdf.pages:
-                extracted_text += (page.extract_text() or "") + "\n"
+        file_bytes = base64.b64decode(data["fileBase64"])
+        file_name = data.get("fileName", "").lower()
+        if file_name.endswith(".pdf"):
+            pdf_stream = io.BytesIO(file_bytes)
+            extracted_text = ""
+            with pdfplumber.open(pdf_stream) as pdf:
+                for page in pdf.pages:
+                    extracted_text += (
+                        page.extract_text() or ""
+                    ) + "\n"
+                    
+        elif file_name.endswith(".docx"):
+            extracted_text = extract_docx_text(file_bytes)
+        
+        else:
+            return jsonify({
+                "success": False,
+                "error": "Only PDF and DOCX files are supported"
+            }), 400
 
         # 🔐 MASK PII HERE
         masked_text = mask_pii(extracted_text)
