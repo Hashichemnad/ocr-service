@@ -70,9 +70,17 @@ def extract_docx_text(doc_bytes):
 
     text = []
 
+    # paragraphs
     for para in document.paragraphs:
-        if para.text:
+        if para.text.strip():
             text.append(para.text)
+
+    # tables
+    for table in document.tables:
+        for row in table.rows:
+            for cell in row.cells:
+                if cell.text.strip():
+                    text.append(cell.text)
 
     return "\n".join(text)
     
@@ -86,8 +94,23 @@ def extract_text():
 
     try:
         # Decode Base64 → PDF bytes
-        file_bytes = base64.b64decode(data["fileBase64"])
-        file_name = data.get("fileName", "").lower()
+        try:
+            file_bytes = base64.b64decode(data["fileBase64"])
+        except Exception:
+            return jsonify({
+                "success": False,
+                "error": "Invalid Base64 data"
+            }), 400
+
+        file_name = data.get("fileName")
+
+        if not file_name:
+            return jsonify({
+                "success": False,
+                "error": "fileName is required"
+            }), 400
+        
+        file_name = file_name.lower()
         if file_name.endswith(".pdf"):
             pdf_stream = io.BytesIO(file_bytes)
             extracted_text = ""
@@ -111,6 +134,7 @@ def extract_text():
 
         return jsonify({
             "success": True,
+            "fileType": file_name.split('.')[-1],
             "text": masked_text.strip()
         })
 
